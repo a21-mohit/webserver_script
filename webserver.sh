@@ -7,8 +7,10 @@ else
 	echo "httpd already installed."
 fi
 
-if [ ! -f /var/www/html/index.html ]; then
-	cat <<EOF >/var/www/html/index.html
+if [ ! -d /srv/www/ ]; then
+	semanage fcontext -a -t httpd_sys_content_t '/srv/www(/.*)?'
+	mkdir -p -m0755 /srv/www
+	cat <<EOF >/srv/www/index.html
 <html>
 <head>
 <title>Demo</title>
@@ -18,23 +20,30 @@ This is demo.
 </body>
 </html>
 EOF
+	restorecon -RF /srv/www/ 
 	echo "index.html created."
 else
 	echo "index.html already exists in /var/www/html"
 fi
 
-restorecon -vvRF /var/www/html &> /dev/null
-
+if [ ! -f /etc/httpd/conf.d/01-www.conf ]; then
+	cat <<EOF >/etc/httpd/conf.d/01-www.conf
+<Directory "/srv/www/">
+	AllowOverride None
+	Require all granted
+</Directory>
+<Virtualhost *:80>
+	ServerName "www.rhel7vms.com"
+	DocumentRoot /srv/www
+</Virtualhost>
+EOF
+	echo "01-www.conf created."
+else
+	echo "01-www.conf already exists."
+fi
 if [ "no" == $(firewall-cmd --query-service=http) ]; then
 	firewall-cmd --permanent --add-service=http &>/dev/null
 	firewall-cmd --reload
-fi
-
-if [ "inactive" == $(systemctl is-active httpd) ]; then
-	systemctl start httpd > /dev/null
-	echo "httpd started."
-else
-	echo "httpd already active."
 fi
 
 if [ "disabled" == $(systemctl is-enabled httpd) ]; then
@@ -42,4 +51,11 @@ if [ "disabled" == $(systemctl is-enabled httpd) ]; then
 	echo "httpd enabled."
 else
 	echo "httpd is already enabled."
+fi
+
+if [ $(systemctl is-active httpd) == "inactive" ]; then
+	systemctl start httpd
+	echo "httpd started."
+else
+	echo "httpd already active."
 fi
